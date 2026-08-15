@@ -1,0 +1,17 @@
+# environment
+nihar-nandala-genar-challenge/
+venv/
+.env
+
+# python cache
+__pycache__/
+*.pyc
+
+# jupyter clutter
+.ipynb_checkpoints/
+
+# the dataset itself — don't track/ship it, they already have it
+data/
+
+# OS junk
+.DS_Store
