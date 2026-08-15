@@ -7,6 +7,9 @@ venv/
 __pycache__/
 *.pyc
 
+
+genar-env/
+
 # jupyter clutter
 .ipynb_checkpoints/
 
