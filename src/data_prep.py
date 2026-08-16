@@ -41,6 +41,8 @@ def clean_data(df):
             axis=1
         )
         df_latest["age_group"] = df_latest["age_years"].apply(bucket_age)
+        df_latest["receivedate"] = pd.to_datetime(df_latest["receivedate"], format="%Y%m%d")  # ← add this
+
         return df_latest
 
 

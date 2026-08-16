@@ -17,4 +17,5 @@ genar-env/
 data/
 
 # OS junk
-.DS_Store
+.DS_Store".env" 
+".env" 
