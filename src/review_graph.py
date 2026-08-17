@@ -9,7 +9,7 @@ from report_context import build_all_packets
 from verified_generation import generate_verified_section
 from groq_client import generate_section
 from verify_section import verify_section
-from prompts.history_of_actions import FIXED_OUTPUT as HISTORY_FIXED_OUTPUT
+from prompts import SECTION_INSTRUCTIONS, FIXED_OUTPUTS
 import pandas as pd
 from pathlib import Path
 
@@ -17,11 +17,8 @@ from pathlib import Path
 class ReviewState(TypedDict):
     results: Dict[str, Any]
     pending_regenerate: Dict[str, str]
+    report_path: str
 
-
-# packets never change once built, no reason to push them thru the
-# checkpointer wich needs everythng in state to convert to plain bytes.
-# keeping it here instead, jst a normal variable, not part of graph state
 _packets_cache = {}
 
 
@@ -36,20 +33,37 @@ def generate_report(state):
 
     results = {}
     for section_key, packet in packets.items():
-        if section_key == "history_of_actions":
-            results[section_key] = {
-                "section": section_key, "text": HISTORY_FIXED_OUTPUT,
-                "final_verified": True,
-            }
+        # used to check "if section_key == 'history_of_actions'" n
+        # "if section_key == 'case_index_listing'" by name here, wich meant
+        # addin a new no-llm section later meant editin this fn too. now it
+        # jst checks wehter tht section even HAS an instruction to send to
+        # the model, tht answer already lives in prompts/, not hardcoded here
+        if SECTION_INSTRUCTIONS[section_key] is None:
+            fixed = FIXED_OUTPUTS[section_key]
+
+            if fixed is not None:
+                # fixed statement section (rn jst history_of_actions), no
+                # data to format, jst use the fixed text as is
+                results[section_key] = {
+                    "section": section_key, "text": fixed,
+                    "final_verified": True,
+                }
+            else:
+                # no instruction AND no fixed text means this section is
+                # literally jst raw data (rn jst case_index_listing), format
+                # any date columns to plain strings so they dont sneak
+                # raw Timestamp objects into graph state, then dump as records
+                formatted = packet.copy()
+                for col in formatted.columns:
+                    if pd.api.types.is_datetime64_any_dtype(formatted[col]):
+                        formatted[col] = formatted[col].dt.strftime("%Y-%m-%d")
+                results[section_key] = {
+                    "section": section_key,
+                    "text": formatted.to_dict("records"),
+                    "final_verified": True,
+                }
             continue
-        if section_key == "case_index_listing":
-            # dataframe isnt serializable either, converting to plain
-            # records (list of dicts) before it ever touches state
-            results[section_key] = {
-                "section": section_key, "text": packet.to_dict("records"),
-                "final_verified": True,
-            }
-            continue
+
         results[section_key] = generate_verified_section(section_key, packet)
 
     return {"results": results, "pending_regenerate": {}}
@@ -81,11 +95,20 @@ def apply_regenerations(state):
         correction = f"the human reviewer asked for this specific change: {instructions}"
         text = generate_section(section_key, packet, correction=correction)
         check = verify_section(text, packet)
+        clean = not check["not_found_numbers"] and not check["not_found_dates"]
+
+        # used to build this dict wth diff keys then wht generate_verified_section
+        # produces (no passed_on_first_try at all), wich meant run_review.py's
+        # print_verification_status silently skipped regenerated sections, no
+        # warning even if the regenerate itself introduced a new hallucination.
+        # matchin the same shape here so the reviewer actually sees the status
+        # after a manual regenerate too, not jst on the first automatic pass
         results[section_key] = {
             "section": section_key,
             "text": text,
-            "final_verified": not check["not_found_numbers"] and not check["not_found_dates"],
-            "flagged_on_attempt_1": check,
+            "passed_on_first_try": clean,
+            "final_verified": clean,
+            "flagged_on_attempt_1": None if clean else check,
         }
     return {"results": results, "pending_regenerate": {}}
 
@@ -98,7 +121,13 @@ def finalize_report(state):
     lines = []
     for section_key, result in state["results"].items():
         lines.append(f"## {section_key}\n")
-        if section_key == "case_index_listing":
+        # used to check "if section_key == 'case_index_listing'" here too,
+        # same problem as the one in generate_report, swapped it fr checkin
+        # wht SHAPE the text actually is insted of wht its called. a list
+        # of records means its raw table data (only case_index_listing
+        # produces this rn, but nothin here assumes tht by name anymore),
+        # anythin else is jst plain text, dump it as is
+        if isinstance(result["text"], list):
             table = pd.DataFrame(result["text"])
             lines.append(table.to_markdown(index=False))
         else:

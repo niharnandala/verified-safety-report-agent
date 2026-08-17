@@ -7,7 +7,6 @@ venv/
 __pycache__/
 *.pyc
 
-
 genar-env/
 
 # jupyter clutter
@@ -17,5 +16,4 @@ genar-env/
 data/
 
 # OS junk
-.DS_Store".env" 
-".env" 
+.DS_Store

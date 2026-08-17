@@ -1,0 +1,7 @@
+pandas==2.3.3
+openpyxl==3.1.5
+groq==1.6.0
+python-dotenv==1.2.2
+langgraph==1.2.11
+langgraph-checkpoint==4.2.0
+tabulate==0.10.0
