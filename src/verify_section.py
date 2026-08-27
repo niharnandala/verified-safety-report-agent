@@ -30,8 +30,15 @@ def strip_dates(text):
 def extract_numbers(text):
     text_without_dates = strip_dates(text)
     text_clean = strip_safe_phrases(text_without_dates)
-    matches = re.findall(r"-?\d+\.?\d*", text_clean)
-    return {float(m) for m in matches if m not in ("", "-", ".")}
+    # thousands separators: "1,024" was splitting into 1 and 024->24, n those
+    # fragments (23, 24) got falsely flagged. drop the comma between digits so
+    # "1,024" reads as one number 1024, matching how its stored in the packet.
+    text_clean = re.sub(r"(?<=\d),(?=\d)", "", text_clean)
+    # match whole numbers only, no leading sign. a range like "18-64" used to
+    # read the hyphen as a minus n produce -64, matching whole numbers instead
+    # splits it cleanly into 18 n 64. no genuine negative counts exist here.
+    matches = re.findall(r"\d+(?:\.\d+)?", text_clean)
+    return {float(m) for m in matches}
 
 
 def flatten_numbers(obj):
@@ -91,6 +98,21 @@ def flatten_dates(obj):
 
 
 def verify_section(generated_text, section_packet):
+    # a blank answer used to pass as "clean" here: no numbers in it means
+    # nothing to flag. but blank = a missing section, not a good one. flag it.
+    if not generated_text or not generated_text.strip():
+        return {
+            "not_found_numbers": [],
+            "not_found_dates": [],
+            "empty_output": True,
+        }
+
+    # models sometimes write dates/ranges with unicode dashes (‑ – —) instead
+    # of a plain "-", which slips past the date matcher: "2025‑06‑22" isnt seen
+    # as a date, so its digits (2025, 6, 22) leak thru n get falsely flagged.
+    # flatten them all to a plain "-" first.
+    generated_text = re.sub(r"[\u2010-\u2015]", "-", generated_text)
+
     text_numbers = extract_numbers(generated_text)
     packet_numbers = flatten_numbers(section_packet)
     not_found_numbers = [n for n in text_numbers if n not in packet_numbers]

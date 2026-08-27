@@ -12,7 +12,7 @@ load_dotenv()
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
-MODEL_NAME = "llama-3.3-70b-versatile"
+MODEL_NAME = "openai/gpt-oss-20b"
 
 
 def call_groq_with_retry(fn, *args, max_attempts=3, wait_seconds=5, **kwargs):
@@ -47,6 +47,24 @@ def generate_section(section_key, packet, correction=None):
             {"role": "user", "content": full_prompt},
         ],
         temperature=0.15,
-        max_tokens=500,
+        # gpt-oss is a reasoning model, it spends tokens thinking before it
+        # writes the answer. 500 was too low: on the big sections the thinking
+        # ate the whole budget n nothing was left to actually write, so content
+        # came back blank. bumped the cap n told it to think less.
+        max_completion_tokens=2000,
+        reasoning_effort="low",
     )
-    return response.choices[0].message.content
+
+    choice = response.choices[0]
+    content = choice.message.content or ""
+
+    # dont return blank/cut-off text silently. before, an empty answer sailed
+    # thru the number checker as "clean" (no numbers = nothing to flag) n a
+    # missing section got saved as if it was fine. fail loud insted.
+    if choice.finish_reason == "length" or not content.strip():
+        raise RuntimeError(
+            f"{section_key}: empty or truncated output "
+            f"(finish_reason={choice.finish_reason})"
+        )
+
+    return content
