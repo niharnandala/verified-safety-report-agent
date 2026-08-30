@@ -2,7 +2,7 @@
 
 # Bisoprolol PADER Generator
 
-### GenAR AI Engineering Challenge — submission by Nihar Nandala
+### submission by Nihar Nandala
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![LangGraph](https://img.shields.io/badge/orchestration-LangGraph-orange)
